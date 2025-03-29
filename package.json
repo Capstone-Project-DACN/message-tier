@@ -1,0 +1,17 @@
+{
+  "name": "anomaly-detector",
+  "version": "1.0.0",
+  "description": "Anomaly detection system for household meters",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}
