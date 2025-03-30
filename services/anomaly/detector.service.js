@@ -5,22 +5,24 @@ const KafkaConsumerService = require('../kafka/consumer.service');
 const AlertService = require('./alert.service');
 const config = require('../../configs');
 const { startCronJob } = require("../../utils/cronJob");
+const AreaProducerService = require('./area-producer.service');
 
 class AnomalyDetectorService {
   constructor() {
     this.areas = {};
     this.alertService = new AlertService();
-    
+    this.areaProducer = new AreaProducerService();
     // Anomaly threshold in percentage
     this.anomalyThreshold = 5;
   }
 
   async start() {
     await this.alertService.init();
+    await this.areaProducer.init();
 
     // Initialize each area
     await Promise.all(config.topics.map(async (topicConfig, index) => {
-      const areaId = `d${index + 1}`;
+      const areaId = `${topicConfig.area.replace('area-', '')}` ;
       await this.initializeArea(areaId, topicConfig);
     }));
 
@@ -67,6 +69,11 @@ class AnomalyDetectorService {
         } else {
           // Process sub meter reading
           this.areas[areaId].householdMeter.addReading(reading);
+
+          this.areaProducer.sendHouseholdMessage(
+            reading.device_id,
+            data
+          );
         }
       } catch (error) {
         console.error(`Error processing message in area ${areaId}:`, error);
@@ -97,7 +104,7 @@ class AnomalyDetectorService {
       `WINDOW ANALYSIS - Area ${areaId}`,
       `AREA Total Consumption: ${areaMeterWindowSum}`,
       `HOUSEHOLD Total Consumption: ${householdWindowSum}`,
-      `Difference: ${percentageDifference.toFixed(2)}%`
+      `Difference: ${Math.abs(percentageDifference)}%`
     );
 
     // Cảnh báo nếu chênh lệch quá lớn
@@ -106,8 +113,8 @@ class AnomalyDetectorService {
     }
 
     // Check for anomaly
-    if (percentageDifference > this.anomalyThreshold) {
-      console.log(`⚠️ ANOMALY DETECTED in area ${areaId}: ${percentageDifference.toFixed(2)}% difference`);
+    if (Math.abs(percentageDifference) > this.anomalyThreshold) {
+      console.log(`⚠️ ANOMALY DETECTED in area ${areaId}: ${Math.abs(percentageDifference)}% difference`);
       console.log(` ===================== *** =====================`);
       
       // Store anomaly
@@ -124,10 +131,11 @@ class AnomalyDetectorService {
       this.alertService.sendAlert(
         areaId,
         {
-          percentageDifference: percentageDifference,
-          areaMeterValue: areaMeterWindowSum,
+          timestamp: Date.now(),
+          areaMeterTotal: areaMeterWindowSum,
           householdMeterTotal: householdWindowSum,
-          meterAverages: Math.abs(percentageDifference)  * areaMeterWindowSum,
+          difference: Math.abs(areaMeterWindowSum - householdWindowSum),
+          percentageDifference: percentageDifference,
           windowSize: config.window.windowTime
         }
       );

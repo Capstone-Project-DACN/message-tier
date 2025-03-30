@@ -2,6 +2,7 @@
 const { Subject } = require('rxjs');
 const { windowTime, mergeMap, reduce, filter } = require('rxjs/operators');
 const config = require('../../configs');
+const AreaProducerService = require('../anomaly/area-producer.service');
 
 class HouseholdMeterService {
   constructor(areaId) {
@@ -17,6 +18,8 @@ class HouseholdMeterService {
     if (!this.readings[reading.device_id]) {
       this.readings[reading.device_id] = [];
     }
+
+
 
     this.readings[reading.device_id].push(reading);
     this.subject.next(reading);
