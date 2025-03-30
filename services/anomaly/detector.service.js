@@ -4,6 +4,7 @@ const HouseholdMeterService = require('../metrics/household-meter.service');
 const KafkaConsumerService = require('../kafka/consumer.service');
 const AlertService = require('./alert.service');
 const config = require('../../configs');
+const { startCronJob } = require("../../utils/cronJob");
 
 class AnomalyDetectorService {
   constructor() {
@@ -11,12 +12,10 @@ class AnomalyDetectorService {
     this.alertService = new AlertService();
     
     // Anomaly threshold in percentage
-    this.anomalyThreshold = 2;
+    this.anomalyThreshold = 5;
   }
 
   async start() {
-        console.log("Starting District-Based Anomaly Detector Service with RxJS...");
-    
     await this.alertService.init();
 
     // Initialize each area
@@ -25,12 +24,10 @@ class AnomalyDetectorService {
       await this.initializeArea(areaId, topicConfig);
     }));
 
-    console.log("All area services are now running");
+    startCronJob();
   }
 
   async initializeArea(areaId, topicConfig) {
-    console.log(`Initializing area ${areaId}...`);
-    
     // Create services for this area
     this.areas[areaId] = {
       areaMeter: new AreaMeterService(areaId),
@@ -60,8 +57,8 @@ class AnomalyDetectorService {
         
         const reading = {
           timestamp: data.timestamp || Date.now(),
-          value: data.value,
-          meterId: data.meterId
+          data: data,
+          device_id: data.device_id
         };
 
         if (isAreaMeter) {
@@ -76,93 +73,68 @@ class AnomalyDetectorService {
       }
     });
     
-    console.log(`Area ${areaId} services are now running`);
+    // console.log(`Area ${areaId} services are now running`);
   }
 
   setupAnomalyDetection(areaId) {
     const area = this.areas[areaId];
+
+    area.householdMeter.setupWindowProcessing(() => {
+    });
     
-    // Setup main meter window processing
     area.areaMeter.setupWindowProcessing((mainWindow) => {
       this.detectAnomalies(areaId, mainWindow);
     });
-    
-    // Setup sub meter window processing
-    area.householdMeter.setupWindowProcessing(() => {
-      // Just update the current window - we'll check for anomalies
-      // when the main window completes
-    });
   }
 
-  detectAnomalies(areaId, mainWindow) {
+  detectAnomalies(areaId) {
     const area = this.areas[areaId];
-    const householdWindow = area.householdMeter.getCurrentWindow();
-    
-    if (!householdWindow) {
-      console.log(`No sub meter data for area ${areaId} in current window`);
-      return;
-    }
-    
-    // Calculate total from sub meters
-    let totalSubMeterValue = 0;
-    let householdMeterCount = 0;
-    let meterAverages = {};
+    const areaMeterWindowSum = this.areas[areaId].areaMeter.lastValue - this.areas[areaId].areaMeter.firstValue;
+    const householdWindowSum = this.areas[areaId].householdMeter.householdWindowSum;
+    const percentageDifference = ((areaMeterWindowSum - householdWindowSum) / areaMeterWindowSum) * 100;
 
-    // Calculate average for each sub meter
-    for (const meterId in householdWindow.meterReadings) {
-      const meterData = householdWindow.meterReadings[meterId];
-      if (meterData.count === 0) continue;
-      
-      const average = meterData.sum / meterData.count;
-      meterAverages[meterId] = average;
-      householdMeterCount++;
-      totalSubMeterValue += meterData.sum;
-    }
-    
-    // Skip if no sub meter data
-    if (householdMeterCount === 0) {
-      console.log(`No sub meter data for area ${areaId} in current window`);
-      return;
-    }
-
-    // Calculate difference
-    const percentageDifferenceAmount = ((totalSubMeterValue - mainWindow.sum) / mainWindow.sum) * 100;
-    
     console.log(
-        `District ${areaId} - WINDOW ANALYSIS - Main total: ${mainWindow.sum}, Sub Total: ${totalSubMeterValue}, Diff: ${percentageDifferenceAmount.toFixed(2)}%`,
-        {areaMeter: mainWindow.sum, totalSubMeterValue, percentageDifferenceAmount}
+      `WINDOW ANALYSIS - Area ${areaId}`,
+      `AREA Total Consumption: ${areaMeterWindowSum}`,
+      `HOUSEHOLD Total Consumption: ${householdWindowSum}`,
+      `Difference: ${percentageDifference.toFixed(2)}%`
     );
 
+    // Cảnh báo nếu chênh lệch quá lớn
+    if (Math.abs(percentageDifference) > this.anomalyThreshold) {
+        console.warn(`⚠️ Possible anomaly detected in area ${areaId}!`);
+    }
+
     // Check for anomaly
-    if (percentageDifferenceAmount > this.anomalyThreshold) {
-      console.log(`⚠️ ANOMALY DETECTED in area ${areaId}: ${percentageDifferenceAmount.toFixed(2)}% difference`);
+    if (percentageDifference > this.anomalyThreshold) {
+      console.log(`⚠️ ANOMALY DETECTED in area ${areaId}: ${percentageDifference.toFixed(2)}% difference`);
       console.log(` ===================== *** =====================`);
       
       // Store anomaly
       area.anomalies.push({
         timestamp: Date.now(),
-        areaMeterTotal: mainWindow.sum,
-        householdMeterTotal: totalSubMeterValue,
-        difference: Math.abs(mainWindow.sum - totalSubMeterValue),
-        percentageDifference: percentageDifferenceAmount,
-        meterAverages,
+        areaMeterTotal: areaMeterWindowSum,
+        householdMeterTotal: householdWindowSum,
+        difference: Math.abs(areaMeterWindowSum - householdWindowSum),
+        percentageDifference: percentageDifference,
         windowSize: config.window.windowTime
       });
       
       // Send alert
-      this.alertService.sendAlert(areaId, {
-        percentageDifference: percentageDifferenceAmount,
-        areaMeterValue: mainWindow.sum,
-        householdMeterTotal: totalSubMeterValue,
-        meterAverages,
-        windowSize: config.window.windowTime
-      });
+      this.alertService.sendAlert(
+        areaId,
+        {
+          percentageDifference: percentageDifference,
+          areaMeterValue: areaMeterWindowSum,
+          householdMeterTotal: householdWindowSum,
+          meterAverages: Math.abs(percentageDifference)  * areaMeterWindowSum,
+          windowSize: config.window.windowTime
+        }
+      );
     }
   }
 
   async stop() {
-    console.log("Stopping Anomaly Detector Service...");
-    
     // Stop all services
     for (const areaId in this.areas) {
       const area = this.areas[areaId];

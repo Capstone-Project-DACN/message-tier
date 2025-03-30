@@ -1,4 +1,3 @@
-// src/services/metrics/main-meter.service.js
 const { Subject } = require('rxjs');
 const { windowTime, mergeMap, reduce, filter } = require('rxjs/operators');
 const config = require('../../configs');
@@ -7,6 +6,8 @@ class AreaMeterService {
   constructor(areaId) {
     this.areaId = areaId;
     this.subject = new Subject();
+    this.lastValue = 0;
+    this.firstValue = 0;
     this.readings = [];
     this.windowSize = config.window.windowTime;
   }
@@ -28,19 +29,24 @@ class AreaMeterService {
   }
 
   setupWindowProcessing(onWindowComplete) {
-    this.subject.pipe(
+    this.subject.pipe(  
       windowTime(this.windowSize),
       mergeMap(window => window.pipe(
         reduce((acc, reading) => {
+          if (acc.count === 0) acc.firstValue = reading.data.total_electricity_usage_kwh;
+          acc.lastValue = reading.data.total_electricity_usage_kwh;
           acc.readings.push(reading);
-          acc.sum += reading.value;
           acc.count++;
+
           return acc;
-        }, { readings: [], sum: 0, count: 0 })
+        }, { readings: [], lastValue: 0, firstValue: 0, count: 0 })
       )),
       filter(result => result.count > 0)
-    ).subscribe(mainWindow => {
-      onWindowComplete(mainWindow);
+    ).subscribe(areaWindow => {
+      this.lastValue = areaWindow.lastValue;
+      this.firstValue = areaWindow.firstValue;
+      this.readings = areaWindow.readings;      
+      onWindowComplete(areaWindow);
     });
   }
 

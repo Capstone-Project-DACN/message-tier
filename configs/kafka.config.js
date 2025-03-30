@@ -1,6 +1,6 @@
 const KAFKA_CONFIG = {
     clientId: 'anomaly-detector',
-    brokers: ['localhost:9092'],
+    brokers: [`localhost:9092`],
     groupId: {
       main: 'anomaly-detector-group'
     }
