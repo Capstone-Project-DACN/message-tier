@@ -1,5 +1,5 @@
 const WINDOW_CONFIG = {
-    windowTime: 1 * 60 * 1000, 
+    windowTime: +process.env.WINDOWSIZE, 
 };
 
 module.exports = WINDOW_CONFIG;

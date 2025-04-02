@@ -5,15 +5,14 @@ const getRandomBatchSize = () => Math.floor(Math.random() * 31);
 
 const callApi = async (url, params = {}) => {
   try {
-    const response = await axios.get(url, { params });
-    // console.log(`✅ API gọi thành công: ${url}`, response.data);
+    await axios.get(url, { params });
   } catch (error) {
     console.error(`❌ Lỗi khi gọi API: ${url}`, error.message);
   }
 };
 
 const runApiSequence = async (district) => {
-  const baseUrl = "http://localhost:3000/data";
+  const baseUrl = process.env.DATASOURCE_SERVER;
 
   await callApi(`${baseUrl}/area`, {
     batch_size: 1,
@@ -46,12 +45,13 @@ const runApiSequence = async (district) => {
 
 // Hàm khởi chạy cronjob
 const startCronJob = () => {
-  cron.schedule("*/1 * * * * *", async () => {
-    console.log("⏳ Đang chạy cronjob...");
-    // await runApiSequence("Q5");
+  cron.schedule(process.env.CRON_TIME, async () => {
+    // await runApiSequence("Q1");
     await runApiSequence("Q3");
     await runApiSequence("Q4");
-    console.log("✅ Hoàn thành tất cả cronjobs.");
+    await runApiSequence("Q5");
+    // await runApiSequence("Q6");
+    console.log("✅ Produce new data to  Q3, Q4 and Q5 successfully.");
   });
 };
 

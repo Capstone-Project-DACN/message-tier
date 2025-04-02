@@ -7,9 +7,9 @@ const KAFKA_CONFIG = {
   };
   
 const HOUSEHOLD_TOPICS = {
-    HCMC_Q5: {
-        area: 'area_HCMC_Q5',
-        household: 'household_HCMC_Q5'
+    HCMC_Q1: {
+        area: 'area_HCMC_Q1',
+        household: 'household_HCMC_Q1'
     },
     HCMC_Q3: {
         area: 'area_HCMC_Q3',
@@ -18,7 +18,15 @@ const HOUSEHOLD_TOPICS = {
     HCMC_Q4: {
         area: 'area_HCMC_Q4',
         household: 'household_HCMC_Q4'
-    }
+    },
+    HCMC_Q5: {
+        area: 'area_HCMC_Q5',
+        household: 'household_HCMC_Q5'
+    },
+    HCMC_Q6: {
+        area: 'area_HCMC_Q6',
+        household: 'household_HCMC_Q6'
+    },
 };
   
 module.exports = {

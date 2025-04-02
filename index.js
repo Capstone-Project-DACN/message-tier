@@ -1,4 +1,5 @@
 // src/index.js
+require('dotenv').config()
 const AnomalyDetectorService = require('./services/anomaly/detector.service');
 
 async function main() {
