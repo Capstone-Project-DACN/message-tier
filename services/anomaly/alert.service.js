@@ -12,7 +12,7 @@ class AlertService {
   async sendAlert(areaId, anomalyData) {
     try {
       await this.producer.send(
-        'anomaly-alerts',
+        'anomaly-alerts', 
         areaId,
         {
           areaId,

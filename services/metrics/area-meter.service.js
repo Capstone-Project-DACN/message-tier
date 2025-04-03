@@ -37,7 +37,6 @@ class AreaMeterService {
           acc.lastValue = reading.data.total_electricity_usage_kwh;
           acc.readings.push(reading);
           acc.count++;
-
           return acc;
         }, { readings: [], lastValue: 0, firstValue: 0, count: 0 })
       )),

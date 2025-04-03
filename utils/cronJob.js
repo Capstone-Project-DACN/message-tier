@@ -45,7 +45,7 @@ const runApiSequence = async (district) => {
 
 // Hàm khởi chạy cronjob
 const startCronJob = () => {
-  cron.schedule(process.env.CRON_TIME, async () => {
+  cron.schedule(process.env.CRON_TIME, async () => {  
     // await runApiSequence("Q1");
     await runApiSequence("Q3");
     await runApiSequence("Q4");

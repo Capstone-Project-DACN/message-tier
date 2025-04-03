@@ -19,8 +19,6 @@ class HouseholdMeterService {
       this.readings[reading.device_id] = [];
     }
 
-
-
     this.readings[reading.device_id].push(reading);
     this.subject.next(reading);
     this.pruneOldData(reading.device_id);
@@ -43,12 +41,11 @@ class HouseholdMeterService {
       windowTime(this.windowSize),
       mergeMap(window => window.pipe(
         reduce((acc, reading) => {
-          if (!acc.meterReadings[reading.device_id]) {
-            acc.meterReadings[reading.device_id] = { sum: 0, count: 0, readings: [] };
-          }
-          
+          if (!acc.meterReadings[reading.device_id]) {acc.meterReadings[reading.device_id] = { sum: 0, count: 0, readings: [], lastValue: 0, firstValue: 0 };}
+
+          if (acc.meterReadings[reading.device_id].count === 0) acc.meterReadings[reading.device_id].firstValue = reading.data.electricity_usage_kwh;
+          acc.meterReadings[reading.device_id].lastValue = reading.data.electricity_usage_kwh;
           acc.meterReadings[reading.device_id].readings.push(reading);
-          acc.meterReadings[reading.device_id].sum += reading.data.electricity_usage_kwh;
           acc.meterReadings[reading.device_id].count++;
           
           return acc;
@@ -56,7 +53,7 @@ class HouseholdMeterService {
       )),
       filter(result => Object.keys(result.meterReadings).length > 0)
     ).subscribe(householdWindow => {
-      const householdWindowSum = Object.values(householdWindow.meterReadings).reduce((acc, reading) => acc + reading.sum, 0);
+      const householdWindowSum = Object.values(householdWindow.meterReadings).reduce((acc, reading) => acc + (reading.lastValue - reading.firstValue), 0);
       this.householdWindowSum = householdWindowSum;
       onWindowComplete(householdWindow);
     });
