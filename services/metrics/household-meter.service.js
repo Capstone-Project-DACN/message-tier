@@ -1,8 +1,6 @@
-// src/services/metrics/sub-meter.service.js
 const { Subject } = require('rxjs');
 const { windowTime, mergeMap, reduce, filter } = require('rxjs/operators');
 const config = require('../../configs');
-const AreaProducerService = require('../anomaly/area-producer.service');
 
 class HouseholdMeterService {
   constructor(areaId) {
@@ -10,8 +8,8 @@ class HouseholdMeterService {
     this.subject = new Subject();
     this.readings = {};
     this.householdWindowSum = 0;
-    this.currentWindow = null;
     this.windowSize = config.window.windowTime;
+    this.previousLastValues = {}; // Store the last value from each device
   }
 
   addReading(reading) {
@@ -41,9 +39,15 @@ class HouseholdMeterService {
       windowTime(this.windowSize),
       mergeMap(window => window.pipe(
         reduce((acc, reading) => {
-          if (!acc.meterReadings[reading.device_id]) {acc.meterReadings[reading.device_id] = { sum: 0, count: 0, readings: [], lastValue: 0, firstValue: 0 };}
-
-          if (acc.meterReadings[reading.device_id].count === 0) acc.meterReadings[reading.device_id].firstValue = reading.data.electricity_usage_kwh;
+          if (!acc.meterReadings[reading.device_id]) {
+            acc.meterReadings[reading.device_id] = { 
+              readings: [], 
+              count: 0, 
+              firstValue: this.previousLastValues[reading.device_id] || 0,
+              lastValue: 0 
+            };
+          }
+          
           acc.meterReadings[reading.device_id].lastValue = reading.data.electricity_usage_kwh;
           acc.meterReadings[reading.device_id].readings.push(reading);
           acc.meterReadings[reading.device_id].count++;
@@ -53,14 +57,19 @@ class HouseholdMeterService {
       )),
       filter(result => Object.keys(result.meterReadings).length > 0)
     ).subscribe(householdWindow => {
-      const householdWindowSum = Object.values(householdWindow.meterReadings).reduce((acc, reading) => acc + (reading.lastValue - reading.firstValue), 0);
+      const householdWindowSum = Object.entries(householdWindow.meterReadings).reduce((acc, [deviceId, reading]) => {
+        this.previousLastValues[deviceId] = reading.lastValue;
+        console.log(`Device ${deviceId} window: ${reading.firstValue} -> ${reading.lastValue}, diff: ${reading.lastValue - reading.firstValue}`);
+        return acc + (reading.lastValue - reading.firstValue);
+      }, 0);
+      
       this.householdWindowSum = householdWindowSum;
       onWindowComplete(householdWindow);
     });
   }
 
   getSumWindow() {
-    return this.sum;
+    return this.householdWindowSum;
   }
 
   stop() {

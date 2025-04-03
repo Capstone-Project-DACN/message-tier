@@ -23,7 +23,8 @@ class KafkaConsumerService {
       this.topics.map(topic =>
         this.consumer.subscribe({
           topic,
-          fromBeginning: false
+          fromBeginning: false,
+          allowAutoTopicCreation: true,
         })
       )
     );

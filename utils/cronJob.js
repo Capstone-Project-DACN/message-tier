@@ -13,21 +13,7 @@ const callApi = async (url, params = {}) => {
 
 const runApiSequence = async (district) => {
   const baseUrl = process.env.DATASOURCE_SERVER;
-
-  await callApi(`${baseUrl}/area`, {
-    batch_size: 1,
-    city_id: "HCMC",
-    district_id: district,
-    display_data: true,
-  });
   
-  await callApi(`${baseUrl}/household`, {
-    batch_size: getRandomBatchSize(),
-    city_id: "HCMC",
-    district_id: district,
-    display_data: true,
-  });
-
   await callApi(`${baseUrl}/household`, {
     batch_size: getRandomBatchSize(),
     city_id: "HCMC",

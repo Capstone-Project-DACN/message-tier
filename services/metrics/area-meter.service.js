@@ -44,7 +44,8 @@ class AreaMeterService {
     ).subscribe(areaWindow => {
       this.lastValue = areaWindow.lastValue;
       this.firstValue = areaWindow.firstValue;
-      this.readings = areaWindow.readings;      
+      this.readings = areaWindow.readings;   
+      this.count = areaWindow.count;   
       onWindowComplete(areaWindow);
     });
   }
