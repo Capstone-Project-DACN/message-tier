@@ -27,6 +27,22 @@ const HOUSEHOLD_TOPICS = {
         area: 'area_HCMC_Q6',
         household: 'household_HCMC_Q6'
     },
+    HCMC_Q7: {
+        area: 'area_HCMC_Q7',
+        household: 'household_HCMC_Q7'
+    },
+    HCMC_Q8: {
+        area: 'area_HCMC_Q8',
+        household: 'household_HCMC_Q8'
+    },
+    HCMC_Q8: {
+        area: 'area_HCMC_Q9',
+        household: 'household_HCMC_Q9'
+    },
+    HCMC_Q10: {
+        area: 'area_HCMC_Q10',
+        household: 'household_HCMC_Q10'
+    }
 };
   
 module.exports = {

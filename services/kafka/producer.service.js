@@ -7,7 +7,11 @@ class KafkaProducerService {
       clientId: config.kafka.clientId,
       brokers: config.kafka.brokers,
     });
-    this.producer = this.kafka.producer();
+    this.producer = this.kafka.producer({
+      allowAutoTopicCreation: true,
+      transactionalId: 'messaging-tier-producer',
+      transactionTimeout: 60000
+    });
   }
 
   async connect() {

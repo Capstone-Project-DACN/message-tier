@@ -1,10 +1,9 @@
-// src/services/anomaly/detector.service.js
 const AreaMeterService = require('../metrics/area-meter.service');
 const HouseholdMeterService = require('../metrics/household-meter.service');
 const KafkaConsumerService = require('../kafka/consumer.service');
 const AlertService = require('./alert.service');
 const config = require('../../configs');
-const { startCronJob } = require("../../utils/cronJob");
+const { startCronJob } = require('../../utils/cronJob');
 const AreaProducerService = require('./area-producer.service');
 
 class AnomalyDetectorService {
@@ -12,25 +11,22 @@ class AnomalyDetectorService {
     this.areas = {};
     this.alertService = new AlertService();
     this.areaProducer = new AreaProducerService();
-    // Anomaly threshold in percentage
-    this.anomalyThreshold = 5;
+    this.anomalyThreshold = 5; 
   }
 
   async start() {
     await this.alertService.init();
     await this.areaProducer.init();
 
-    // Initialize each area
-    await Promise.all(config.topics.map(async (topicConfig, index) => {
-      const areaId = `${topicConfig.area.replace('area-', '')}` ;
+    await Promise.all(config.topics.map(async (topicConfig) => {
+      const areaId = `${topicConfig.area.replace('area-', '')}`;
       await this.initializeArea(areaId, topicConfig);
     }));
 
-    startCronJob();
+    // startCronJob();
   }
 
   async initializeArea(areaId, topicConfig) {
-    // Create services for this area
     this.areas[areaId] = {
       areaMeter: new AreaMeterService(areaId),
       householdMeter: new HouseholdMeterService(areaId),
@@ -41,120 +37,97 @@ class AnomalyDetectorService {
       anomalies: []
     };
 
-    // Set up RxJS processing
     this.setupAnomalyDetection(areaId);
 
-    // Connect and subscribe
     const consumer = this.areas[areaId].consumer;
     await consumer.connect();
     await consumer.subscribe();
-    
-    // Start consuming messages
+
     await consumer.consume(async ({ topic, message }) => {
       try {
         const data = JSON.parse(message.value.toString());
-        
-        // Determine if this is from main meter or sub meter based on the topic
         const isAreaMeter = topic === topicConfig.area;
-        
+
         const reading = {
           timestamp: data.timestamp || Date.now(),
           data: data,
           device_id: data.device_id
         };
 
-        if (isAreaMeter) {
-          // Process main meter reading
-          this.areas[areaId].areaMeter.addReading(reading);
-        } else {
-          // Process sub meter reading
-          this.areas[areaId].householdMeter.addReading(reading);
+        // console.log(data);
 
-          this.areaProducer.sendHouseholdMessage(
-            reading.device_id,
-            data
-          );
+        if (isAreaMeter) {
+          this.areas[areaId].areaMeter.addReading(reading);
+          this.areaProducer.sendAreaMessage(reading.device_id, data);
+        } else {
+          this.areas[areaId].householdMeter.addReading(reading);
+          this.areaProducer.sendHouseholdMessage(reading.device_id, data);
         }
       } catch (error) {
         console.error(`Error processing message in area ${areaId}:`, error);
       }
     });
-    
-    // console.log(`Area ${areaId} services are now running`);
   }
 
   setupAnomalyDetection(areaId) {
     const area = this.areas[areaId];
 
     area.householdMeter.setupWindowProcessing(() => {
-    });
-    
-    area.areaMeter.setupWindowProcessing((mainWindow) => {
-      this.detectAnomalies(areaId, mainWindow);
+    }); 
+    area.areaMeter.setupWindowProcessing((areaWindow) => {
+      this.detectAnomalies(areaId, areaWindow);
     });
   }
 
-  detectAnomalies(areaId) {
+  detectAnomalies(areaId, areaWindow) {
     const area = this.areas[areaId];
-    const areaMeterWindowSum = this.areas[areaId].areaMeter.lastValue - this.areas[areaId].areaMeter.firstValue;
-    const householdWindowSum = this.areas[areaId].householdMeter.householdWindowSum;
-    const percentageDifference = ((areaMeterWindowSum - householdWindowSum) / areaMeterWindowSum) * 100;
+    const areaMeterWindowSum = area.areaMeter.getSumWindow();
+    const householdWindowSum = area.householdMeter.getSumWindow();
+
+    if (areaMeterWindowSum === 0 && householdWindowSum === 0) {
+      console.log(`No data in window for area ${areaId}`);
+      return;
+    }
+
+    const difference = Math.abs(areaMeterWindowSum - householdWindowSum);
+    const percentageDifference = areaMeterWindowSum !== 0
+      ? (difference / Math.abs(areaMeterWindowSum)) * 100
+      : 0;
 
     console.log(
       `WINDOW ANALYSIS - Area ${areaId}`,
-      `AREA Total Consumption: ${areaMeterWindowSum}`,
-      `HOUSEHOLD Total Consumption: ${householdWindowSum}`,
-      `Difference: ${Math.abs(percentageDifference)}%`
+      `AREA Total: ${areaMeterWindowSum.toFixed(2)} kWh`,
+      `HOUSEHOLD Total: ${householdWindowSum.toFixed(2)} kWh`,
+      `Difference: ${difference.toFixed(2)} kWh`,
+      `Percentage Difference: ${percentageDifference.toFixed(2)}%`
     );
 
-    // Cảnh báo nếu chênh lệch quá lớn
-    if (Math.abs(percentageDifference) > this.anomalyThreshold) {
-        console.warn(`⚠️ Possible anomaly detected in area ${areaId}!`);
-    }
-
-    // Check for anomaly
-    if (Math.abs(percentageDifference) > this.anomalyThreshold) {
-      console.log(`⚠️ ANOMALY DETECTED in area ${areaId}: ${Math.abs(percentageDifference)}% difference`);
-      console.log(` ===================== *** =====================`);
-      
-      // Store anomaly
-      area.anomalies.push({
+    if (percentageDifference > this.anomalyThreshold) {
+      console.warn(`⚠️ ANOMALY DETECTED in area ${areaId}: ${percentageDifference.toFixed(2)}% difference`);
+      const anomaly = {
         timestamp: Date.now(),
         areaMeterTotal: areaMeterWindowSum,
         householdMeterTotal: householdWindowSum,
-        difference: Math.abs(areaMeterWindowSum - householdWindowSum),
-        percentageDifference: percentageDifference,
+        difference,
+        percentageDifference,
         windowSize: config.window.windowTime
-      });
-      
-      // Send alert
-      this.alertService.sendAlert(
-        areaId,
-        {
-          timestamp: Date.now(),
-          areaMeterTotal: areaMeterWindowSum,
-          householdMeterTotal: householdWindowSum,
-          difference: Math.abs(areaMeterWindowSum - householdWindowSum),
-          percentageDifference: percentageDifference,
-          windowSize: config.window.windowTime
-        }
-      );
+      };
+      area.anomalies.push(anomaly);
+      this.alertService.sendAlert(areaId, anomaly);
     }
+
+    console.log("Start new window");
   }
 
   async stop() {
-    // Stop all services
     for (const areaId in this.areas) {
       const area = this.areas[areaId];
       area.areaMeter.stop();
       area.householdMeter.stop();
       await area.consumer.disconnect();
     }
-    
-    // Stop alert service
     await this.alertService.stop();
-    
-    console.log("Anomaly Detector Service stopped");
+    console.log('Anomaly Detector Service stopped');
   }
 }
 

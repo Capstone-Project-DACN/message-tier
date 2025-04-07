@@ -6,13 +6,18 @@ class HouseholdMeterService {
   constructor(areaId) {
     this.areaId = areaId;
     this.subject = new Subject();
-    this.readings = {};
+    this.readings = {}; // { device_id: [reading] }
+    this.lastValueOfPreviousWindow = {}; // { device_id: value }
     this.householdWindowSum = 0;
     this.windowSize = config.window.windowTime;
-    this.previousLastValues = {}; // Store the last value from each device
   }
 
   addReading(reading) {
+    if (!reading.device_id || typeof reading.data?.electricity_usage_kwh !== 'number') {
+      console.error(`Invalid reading for area ${this.areaId}:`, reading);
+      return;
+    }
+
     if (!this.readings[reading.device_id]) {
       this.readings[reading.device_id] = [];
     }
@@ -22,16 +27,12 @@ class HouseholdMeterService {
     this.pruneOldData(reading.device_id);
   }
 
-  pruneOldData(device_id) {
-    if (!this.readings[device_id]) return;
-    
+  pruneOldData(deviceId) {
+    if (!this.readings[deviceId]) return;
+
     const now = Date.now();
     const cutoff = now - this.windowSize;
-    
-    const indexToKeep = this.readings[device_id].findIndex(r => r.timestamp >= cutoff);
-    if (indexToKeep > 0) {
-      this.readings[device_id].splice(0, indexToKeep);
-    }
+    this.readings[deviceId] = this.readings[deviceId].filter(r => r.timestamp >= cutoff);
   }
 
   setupWindowProcessing(onWindowComplete) {
@@ -39,32 +40,35 @@ class HouseholdMeterService {
       windowTime(this.windowSize),
       mergeMap(window => window.pipe(
         reduce((acc, reading) => {
-          if (!acc.meterReadings[reading.device_id]) {
-            acc.meterReadings[reading.device_id] = { 
-              readings: [], 
-              count: 0, 
-              firstValue: this.previousLastValues[reading.device_id] || 0,
-              lastValue: 0 
-            };
+          if (!acc[reading.device_id]) {
+            acc[reading.device_id] = [];
           }
-          
-          acc.meterReadings[reading.device_id].lastValue = reading.data.electricity_usage_kwh;
-          acc.meterReadings[reading.device_id].readings.push(reading);
-          acc.meterReadings[reading.device_id].count++;
-          
+          acc[reading.device_id].push(reading);
           return acc;
-        }, { meterReadings: {}, timestamp: Date.now() })
+        }, {}),
       )),
-      filter(result => Object.keys(result.meterReadings).length > 0)
-    ).subscribe(householdWindow => {
-      const householdWindowSum = Object.entries(householdWindow.meterReadings).reduce((acc, [deviceId, reading]) => {
-        this.previousLastValues[deviceId] = reading.lastValue;
-        console.log(`Device ${deviceId} window: ${reading.firstValue} -> ${reading.lastValue}, diff: ${reading.lastValue - reading.firstValue}`);
-        return acc + (reading.lastValue - reading.firstValue);
+      filter(devices => Object.keys(devices).length > 0)
+    ).subscribe(deviceReadings => {
+      // Tính tổng tiêu thụ trong window cho tất cả devices
+      const householdWindowSum = Object.entries(deviceReadings).reduce((sum, [deviceId, readings]) => {
+        if (readings.length === 0) return sum;
+
+        const logData = readings.map(item => item.data.electricity_usage_kwh);
+        console.log({areaId: this.areaId, deviceId, lastValue: this.lastValueOfPreviousWindow, logData})
+
+        const firstValue = this.lastValueOfPreviousWindow[deviceId] || readings[0].data.electricity_usage_kwh;
+        const lastValue = readings[readings.length - 1].data.electricity_usage_kwh;
+        this.lastValueOfPreviousWindow[deviceId] = readings[readings.length - 1].data.electricity_usage_kwh;
+        if(lastValue - firstValue <= 0) return sum;
+        return sum + (lastValue - firstValue);
       }, 0);
-      
+
       this.householdWindowSum = householdWindowSum;
-      onWindowComplete(householdWindow);
+      onWindowComplete({
+        timestamp: Date.now(),
+        readings: deviceReadings,
+        total: householdWindowSum
+      });
     });
   }
 
