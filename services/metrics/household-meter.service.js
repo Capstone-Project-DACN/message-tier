@@ -53,8 +53,8 @@ class HouseholdMeterService {
       const householdWindowSum = Object.entries(deviceReadings).reduce((sum, [deviceId, readings]) => {
         if (readings.length === 0) return sum;
 
-        const logData = readings.map(item => item.data.electricity_usage_kwh);
-        console.log({areaId: this.areaId, deviceId, lastValue: this.lastValueOfPreviousWindow, logData})
+        // const logData = readings.map(item => item.data.electricity_usage_kwh);
+        // console.log({areaId: this.areaId, deviceId, lastValue: this.lastValueOfPreviousWindow, logData})
 
         const firstValue = this.lastValueOfPreviousWindow[deviceId] || readings[0].data.electricity_usage_kwh;
         const lastValue = readings[readings.length - 1].data.electricity_usage_kwh;

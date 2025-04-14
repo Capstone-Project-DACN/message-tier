@@ -1,6 +1,6 @@
 const KAFKA_CONFIG = {
     clientId: 'anomaly-detector',
-    brokers: [`localhost:9092`],
+    brokers: [`${process.env.BOOTSTRAP_SERVER}`],
     groupId: {
       main: 'anomaly-detector-group'
     }
@@ -35,7 +35,7 @@ const HOUSEHOLD_TOPICS = {
         area: 'area_HCMC_Q8',
         household: 'household_HCMC_Q8'
     },
-    HCMC_Q8: {
+    HCMC_Q9: {
         area: 'area_HCMC_Q9',
         household: 'household_HCMC_Q9'
     },

@@ -40,8 +40,8 @@ class AreaMeterService {
       )),
       filter(readings => readings.length > 0)
     ).subscribe(readings => {
-      const logData = readings.map(item => item.data.total_electricity_usage_kwh);
-      console.log({areaId: this.areaId, lastValue: this.lastValueOfPreviousWindow, logData})
+      // const logData = readings.map(item => item.data.total_electricity_usage_kwh);
+      // console.log({areaId: this.areaId, lastValue: this.lastValueOfPreviousWindow, logData})
 
       const firstValue = this.lastValueOfPreviousWindow || readings[0].data.total_electricity_usage_kwh;
       const lastValue = readings[readings.length - 1].data.total_electricity_usage_kwh;

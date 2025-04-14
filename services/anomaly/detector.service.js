@@ -15,6 +15,8 @@ class AnomalyDetectorService {
   }
 
   async start() {
+    console.log("Anomaly Detector Service started", process.env.BOOTSTRAP_SERVER, process.env.DATASOURCE_SERVER);
+
     await this.alertService.init();
     await this.areaProducer.init();
 
@@ -22,6 +24,7 @@ class AnomalyDetectorService {
       const areaId = `${topicConfig.area.replace('area-', '')}`;
       await this.initializeArea(areaId, topicConfig);
     }));
+
 
     // startCronJob();
   }
@@ -53,8 +56,6 @@ class AnomalyDetectorService {
           data: data,
           device_id: data.device_id
         };
-
-        // console.log(data);
 
         if (isAreaMeter) {
           this.areas[areaId].areaMeter.addReading(reading);

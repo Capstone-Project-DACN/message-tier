@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   redis:
     image: redis/redis-stack:latest
@@ -6,6 +8,13 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
 
   redis-commander:
     image: rediscommander/redis-commander:latest
@@ -15,7 +24,29 @@ services:
     environment:
       - REDIS_HOSTS=local:redis:6379
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+      - zookeeper_secrets:/etc/zookeeper/secrets
+    healthcheck:
+      test: ["CMD", "echo", "ruok", "|", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
 
   kafka:
     image: confluentinc/cp-kafka:latest
@@ -33,19 +64,15 @@ services:
       - kafka_data:/var/lib/kafka/data
       - kafka_secrets:/etc/kafka/secrets
     depends_on:
-      - zookeeper
-
-  zookeeper:
-    image: confluentinc/cp-zookeeper:latest
-    container_name: zookeeper
-    ports:
-      - "2181:2181"
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-    volumes:
-      - zookeeper_data:/var/lib/zookeeper/data
-      - zookeeper_log:/var/lib/zookeeper/log
-      - zookeeper_secrets:/etc/zookeeper/secrets
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--list", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
 
   control-center:
     image: confluentinc/cp-enterprise-control-center:7.8.0
@@ -58,8 +85,12 @@ services:
       CONTROL_CENTER_REPLICATION_FACTOR: 1
       PORT: 9021
     depends_on:
-      - kafka
-      - zookeeper
+      kafka:
+        condition: service_healthy
+      zookeeper:
+        condition: service_healthy
+    networks:
+      - app-network
 
   data-source-service:
     image: hungvo2003vn/data-source-service:latest
@@ -72,7 +103,7 @@ services:
       DATA_SOURCE_SERVICE_PORT: 3000
       DATA_SOURCE_SERVICE_DOMAIN: data-source-service
       DATA_SOURCE_SERVICE_URL: http://data-source-service:3000
-      
+      DEFAULT_CRON_TIME: '*/30 * * * * *'
       KAFKA_CLIENT_ID: data-source-district-9
       BOOTSTRAP_SERVER: kafka:29092
       KAFKA_API_KEY: admin
@@ -81,14 +112,16 @@ services:
       CONNECTION_TIMEOUT: 10000
       ALLOW_AUTO_TOPIC_CREATION: 1
       TRANSACTION_TIMEOUT: 60000
-
       REDIS_HOST: redis
       REDIS_PORT: 6379
     depends_on:
-      - kafka
-      - redis
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
 
-  
   collection-tier-service:
     image: hungvo2003vn/collection-tier-service:latest
     pull_policy: if_not_present
@@ -99,25 +132,19 @@ services:
     environment:
       DATA_SOURCE_SERVICE_PORT: 3000
       DATA_SOURCE_SERVICE_DOMAIN: data-source-service
-      DATA_SOURCE_SERVICE_URL: data-source-service:3000
-
+      DATA_SOURCE_SERVICE_URL: http://data-source-service:3000
       PRODUCER_SERVICE_PORT: 3001
       PRODUCER_SERVICE_DOMAIN: collection-tier-service
       PRODUCER_SERVICE_URL: http://collection-tier-service:3001
-
-      CRON_TIME_CONSUMER_HOUSEHOLD: '*/2 * * * * *'
+      CRON_TIME_CONSUMER_HOUSEHOLD: '*/30 * * * * *'
       CRON_CONSUMER_HOUSEHOLD_ENABLED: 0
-
-      CRON_TIME_CONSUMER_AREA: '*/2 * * * * *'
+      CRON_TIME_CONSUMER_AREA: '*/30 * * * * *'
       CRON_CONSUMER_AREA_ENABLED: 0
-
-      CRON_TIME_CONSUMER_ANOMALY: '*/2 * * * * *'
+      CRON_TIME_CONSUMER_ANOMALY: '*/30 * * * * *'
       CRON_CONSUMER_ANOMALY_ENABLED: 0
-
       CONSUMER_HOUSEHOLD_ENABLED: 1
       CONSUMER_AREA_ENABLED: 1
       CONSUMER_ANOMALY_ENABLED: 1
-
       KAFKA_CLIENT_ID: collection-tier-district-9
       BOOTSTRAP_SERVER: kafka:29092
       KAFKA_API_KEY: admin
@@ -126,13 +153,16 @@ services:
       CONNECTION_TIMEOUT: 10000
       ALLOW_AUTO_TOPIC_CREATION: 1
       TRANSACTION_TIMEOUT: 60000
-
       REDIS_HOST: redis
       REDIS_PORT: 6379
       INACTIVE_TIME: 10000
     depends_on:
-      - kafka
-      - redis
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
 
   spark:
     image: thienphuc532266/spark:1.0
@@ -141,13 +171,15 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: myminioadmin
       MINIO_SECRET_KEY: myminioadmin
-      KAFKA_BROKER: http://kafka:29092
+      KAFKA_BROKER: kafka:29092
       KAFKA_TOPIC: household_data
       KAFKA_MAX_OFFSET: 500
     depends_on:
       - minio
       - kafka
-      
+    networks:
+      - app-network
+
   minio:
     image: minio/minio:latest
     container_name: minio
@@ -162,15 +194,69 @@ services:
     command: server /data
     volumes:
       - minio_data:/mnt/data
+    networks:
+      - app-network
 
+  anomaly-detection:
+    image: tranminhhieu212/anomaly-detection:latest
+    container_name: anomaly-detection
+    ports:
+      - "9098:4000"
+    environment:
+      BOOTSTRAP_SERVER: kafka:29092
+      DATASOURCE_SERVER: http://data-source-service:3000/data
+      WINDOWSIZE: 30000
+      CRON_TIME: '*/30 * * * * *'
+    depends_on:
+      kafka:
+        condition: service_healthy
+      data-source-service:
+        condition: service_started
+    networks:
+      - app-network
 
+  capstone-web:
+    image: tranminhhieu212/capstone-web:latest
+    container_name: capstone-web
+    ports:
+      - "9090:9090"
+    environment:
+      VITE_AWS_PROJECT_REGION: your_region
+      VITE_AWS_COGNITO_IDENTITY_POOL_ID: your_identity_pool_id
+      VITE_AWS_COGNITO_REGION: your_region
+      VITE_AWS_USER_POOLS_ID: your_user_pool_id
+      VITE_AWS_USER_POOLS_WEB_CLIENT_ID: your_client_id
+      VITE_AWS_OAUTH_DOMAIN: your_oauth_domain
+      VITE_AWS_OAUTH_REDIRECT_SIGN_IN: http://capstone-web:9090
+      VITE_AWS_OAUTH_REDIRECT_SIGN_OUT: http://capstone-web:9090
+      VITE_FIREBASE_API_KEY: your_api_key
+      VITE_FIREBASE_AUTH_DOMAIN: your-dev-app.firebaseapp.com
+      VITE_FIREBASE_DATABASE_URL: https://your-dev-app.firebaseio.com
+      VITE_FIREBASE_PROJECT_ID: your-dev-app
+      VITE_FIREBASE_STORAGE_BUCKET: your-dev-app.appspot.com
+      VITE_FIREBASE_MESSAGING_SENDER_ID: your_sender_id
+      VITE_FIREBASE_APP_ID: your_app_id
+      VITE_API_BASE_URL: http://capstone-web:9090
+      VITE_MAP_KEY: your_google_map_api_key
+    networks:
+      - app-network
 
 volumes:
   redis_data:
+    driver: local
   kafka_data:
+    driver: local
   kafka_secrets:
+    driver: local
   zookeeper_data:
+    driver: local
   zookeeper_log:
+    driver: local
   zookeeper_secrets:
+    driver: local
   minio_data:
+    driver: local
 
+networks:
+  app-network:
+    driver: bridge
