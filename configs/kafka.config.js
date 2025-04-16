@@ -2,10 +2,10 @@ const KAFKA_CONFIG = {
     clientId: 'anomaly-detector',
     brokers: [`${process.env.BOOTSTRAP_SERVER}`],
     groupId: {
-      main: 'anomaly-detector-group'
+      main: process.env.KAFKA_GROUP_ID || 'anomaly-detector-group'
     }
-  };
-  
+};
+
 const HOUSEHOLD_TOPICS = {
     HCMC_Q1: {
         area: 'area_HCMC_Q1',

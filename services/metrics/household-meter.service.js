@@ -7,24 +7,60 @@ class HouseholdMeterService {
     this.areaId = areaId;
     this.subject = new Subject();
     this.readings = {}; // { device_id: [reading] }
+    this.lastCumulativeValue = {}; // { device_id: last_cumulative_value }
+    this.consumptionHistory = {}; // { device_id: [consumption_delta] }
     this.lastValueOfPreviousWindow = {}; // { device_id: value }
     this.householdWindowSum = 0;
     this.windowSize = config.window.windowTime;
+    this.anomalyThreshold = +process.env.DEVICE_ANOMALY_THRESHOLD || 50; // Ngưỡng anomaly cho device (%)
+    this.maxHistorySize = 100; // Giới hạn số lượng giá trị tiêu thụ trong lịch sử
+    this.mininumDeltaConsumption = +process.env.MINIMUM_DELTA_CONSUMPTION || 50;
   }
 
-  addReading(reading) {
+  addReading(reading, onDeviceAnomaly = () => {}) {
     if (!reading.device_id || typeof reading.data?.electricity_usage_kwh !== 'number') {
       console.error(`Invalid reading for area ${this.areaId}:`, reading);
       return;
     }
 
-    if (!this.readings[reading.device_id]) {
-      this.readings[reading.device_id] = [];
+    const deviceId = reading.device_id;
+    const currentValue = reading.data.electricity_usage_kwh;
+
+    if (!this.readings[deviceId]) {
+      this.readings[deviceId] = [];
+      this.consumptionHistory[deviceId] = [];
     }
 
-    this.readings[reading.device_id].push(reading);
+    // Tính giá trị tiêu thụ thực tế (delta)
+    let consumptionDelta = null;
+    if (this.lastCumulativeValue[deviceId] !== undefined) {
+      if (currentValue >= this.lastCumulativeValue[deviceId]) {
+        consumptionDelta = currentValue - this.lastCumulativeValue[deviceId];
+      } else {
+        // Giá trị tích lũy giảm (có thể do reset đồng hồ), coi như giá trị tiêu thụ là chính giá trị hiện tại
+        console.warn(`Cumulative value reset detected for device ${deviceId}. Treating current value as consumption.`);
+        consumptionDelta = currentValue;
+      }
+    }
+    this.lastCumulativeValue[deviceId] = currentValue;
+
+    // Lưu reading
+    this.readings[deviceId].push(reading);
+    this.pruneOldData(deviceId);
+
+    // Phát hiện anomaly nếu có giá trị tiêu thụ
+    if (consumptionDelta !== null) {
+      // Lưu giá trị tiêu thụ vào lịch sử
+      this.consumptionHistory[deviceId].push(consumptionDelta);
+      if (this.consumptionHistory[deviceId].length > this.maxHistorySize) {
+        this.consumptionHistory[deviceId].shift(); // Giữ lịch sử không quá lớn
+      }
+
+      // Phát hiện anomaly
+      this.detectDeviceAnomaly(deviceId, consumptionDelta, onDeviceAnomaly);
+    }
+
     this.subject.next(reading);
-    this.pruneOldData(reading.device_id);
   }
 
   pruneOldData(deviceId) {
@@ -33,6 +69,42 @@ class HouseholdMeterService {
     const now = Date.now();
     const cutoff = now - this.windowSize;
     this.readings[deviceId] = this.readings[deviceId].filter(r => r.timestamp >= cutoff);
+  }
+
+  // Phát hiện anomaly cho device dựa trên giá trị tiêu thụ thực tế
+  detectDeviceAnomaly(deviceId, consumptionDelta, onDeviceAnomaly) {
+    const deviceConsumptionHistory = this.consumptionHistory[deviceId] || [];
+
+    // Cần ít nhất 1 giá trị trong lịch sử để so sánh (không tính giá trị hiện tại)
+    if (deviceConsumptionHistory.length < 2) return;
+
+    // Tính trung bình của các giá trị tiêu thụ trước đó (trừ giá trị hiện tại)
+    const previousConsumptionValues = deviceConsumptionHistory.slice(0, -1);
+    const averageConsumption = previousConsumptionValues.reduce((sum, val) => sum + val, 0) / previousConsumptionValues.length;
+
+    // Tính phần trăm chênh lệch
+    const difference = Math.abs(consumptionDelta - averageConsumption);
+    const percentageDifference = averageConsumption !== 0 ? (difference / averageConsumption) * 100 : 0;
+
+    console.log(
+      `Device ${deviceId} - Current Consumption: ${consumptionDelta.toFixed(2)} kWh, ` +
+      `Average Consumption: ${averageConsumption.toFixed(2)} kWh, ` +
+      `Percentage Difference: ${percentageDifference.toFixed(2)}%`
+    );
+
+    if (percentageDifference > this.anomalyThreshold && consumptionDelta > this.mininumDeltaConsumption) {
+      console.warn(`⚠️ DEVICE ANOMALY DETECTED for device ${deviceId}: ${percentageDifference.toFixed(2)}% difference`);
+      const anomaly = {
+        deviceId,
+        timestamp: Date.now(),
+        currentConsumption: consumptionDelta,
+        averageConsumption,
+        difference,
+        percentageDifference,
+        windowSize: this.windowSize
+      };
+      onDeviceAnomaly(anomaly);
+    }
   }
 
   setupWindowProcessing(onWindowComplete) {
@@ -49,17 +121,13 @@ class HouseholdMeterService {
       )),
       filter(devices => Object.keys(devices).length > 0)
     ).subscribe(deviceReadings => {
-      // Tính tổng tiêu thụ trong window cho tất cả devices
       const householdWindowSum = Object.entries(deviceReadings).reduce((sum, [deviceId, readings]) => {
         if (readings.length === 0) return sum;
-
-        // const logData = readings.map(item => item.data.electricity_usage_kwh);
-        // console.log({areaId: this.areaId, deviceId, lastValue: this.lastValueOfPreviousWindow, logData})
 
         const firstValue = this.lastValueOfPreviousWindow[deviceId] || readings[0].data.electricity_usage_kwh;
         const lastValue = readings[readings.length - 1].data.electricity_usage_kwh;
         this.lastValueOfPreviousWindow[deviceId] = readings[readings.length - 1].data.electricity_usage_kwh;
-        if(lastValue - firstValue <= 0) return sum;
+        if (lastValue - firstValue <= 0) return sum;
         return sum + (lastValue - firstValue);
       }, 0);
 

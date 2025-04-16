@@ -3,28 +3,30 @@ const HouseholdMeterService = require('../metrics/household-meter.service');
 const KafkaConsumerService = require('../kafka/consumer.service');
 const AlertService = require('./alert.service');
 const config = require('../../configs');
-const { startCronJob } = require('../../utils/cronJob');
+const MinioService = require('../../services/minio/minio.service');
 const AreaProducerService = require('./area-producer.service');
+const { startCronJob } = require('../../utils/cronJob');
 
 class AnomalyDetectorService {
   constructor() {
     this.areas = {};
     this.alertService = new AlertService();
+    this.minioService = new MinioService();
     this.areaProducer = new AreaProducerService();
-    this.anomalyThreshold = 5; 
+    this.anomalyThreshold = process.env.ANOMALY_THRESHOLD || 5; 
   }
 
   async start() {
-    console.log("Anomaly Detector Service started", process.env.BOOTSTRAP_SERVER, process.env.DATASOURCE_SERVER);
+    console.log("Anomaly Detector Service started");
 
     await this.alertService.init();
+    await this.minioService.init();
     await this.areaProducer.init();
 
     await Promise.all(config.topics.map(async (topicConfig) => {
       const areaId = `${topicConfig.area.replace('area-', '')}`;
       await this.initializeArea(areaId, topicConfig);
     }));
-
 
     // startCronJob();
   }
@@ -61,7 +63,9 @@ class AnomalyDetectorService {
           this.areas[areaId].areaMeter.addReading(reading);
           this.areaProducer.sendAreaMessage(reading.device_id, data);
         } else {
-          this.areas[areaId].householdMeter.addReading(reading);
+          this.areas[areaId].householdMeter.addReading(reading, (anomaly) => {
+            this.handleDeviceAnomaly(areaId, anomaly);
+          });
           this.areaProducer.sendHouseholdMessage(reading.device_id, data);
         }
       } catch (error) {
@@ -111,13 +115,17 @@ class AnomalyDetectorService {
         householdMeterTotal: householdWindowSum,
         difference,
         percentageDifference,
-        windowSize: config.window.windowTime
+        windowSize: config.window.windowTime,
       };
-      area.anomalies.push(anomaly);
       this.alertService.sendAlert(areaId, anomaly);
+      this.minioService.storeAreaAnomaly(areaId, anomaly);
     }
+  }
 
-    console.log("Start new window");
+  handleDeviceAnomaly(areaId, anomaly) {
+    console.log(`Storing device anomaly for area ${areaId}, device ${anomaly.deviceId}`);
+    this.alertService.sendAlert(areaId, anomaly);
+    this.minioService.storeDeviceAnomaly(anomaly.deviceId, areaId, anomaly);
   }
 
   async stop() {

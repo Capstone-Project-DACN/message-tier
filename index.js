@@ -1,9 +1,22 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const AnomalyDetectorService = require('./services/anomaly/detector.service');
+const anomalyRoutes = require('./routes/anomaly.routes');
+const errorMiddleware = require('./middleware/error.middleware');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+const corsOptions = {
+  origin:  '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+};
+
+app.use(cors(corsOptions));  
+app.use(express.json());
+app.use('/api/anomalies', anomalyRoutes);
+app.use(errorMiddleware);
 
 async function main() {
   const anomalyDetector = new AnomalyDetectorService();
