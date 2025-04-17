@@ -46,19 +46,19 @@ class MinioService {
         ? anomaly.percentageDifference 
         : 0;
       const anomalyData = {
+        ...anomaly,
         areaId,
         severity: percentageDifference > 5 ? "HIGH" : "MEDIUM",
-        message: `Anomaly detected in area ${areaId}: ${percentageDifference.toFixed(2)}% difference`,
         analysisType: "RxJS Window",
         typeof: "AREA",
-        ...anomaly
+        message: `[DISTRICT][WARMING] - ${areaId}: ${percentageDifference.toFixed(2)}% difference`,
       };
       const data = JSON.stringify(anomalyData);
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           await this.client.putObject(this.bucket, objectName, Buffer.from(data));
-          console.log(`Anomaly stored in MinIO: ${objectName}`);
+          console.log(`[DISTRICT][WARMING] stored in MinIO: ${objectName}`);
           return objectName;
         } catch (error) {
           if (attempt === maxRetries) throw error;
@@ -82,19 +82,19 @@ class MinioService {
         ? anomaly.percentageDifference 
         : 0;
       const anomalyData = {
+        ...anomaly,
         areaId,
         severity: percentageDifference > 5 ? "HIGH" : "MEDIUM",
-        message: `Anomaly detected in area ${areaId}: ${percentageDifference.toFixed(2)}% difference`,
         analysisType: "RxJS Window",
         typeof: "DEVICE",
-        ...anomaly
+        message: `[DEVICE][WARMING] - ${deviceId}: ${percentageDifference.toFixed(2)}% difference`,
       };
       const data = JSON.stringify(anomalyData);
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           await this.client.putObject(this.bucket, objectName, Buffer.from(data));
-          console.log(`Anomaly stored in MinIO: ${objectName}`);
+          console.log(`[DEVICE][WARMING] stored in MinIO: ${objectName}`);
           return objectName;
         } catch (error) {
           if (attempt === maxRetries) throw error;
@@ -122,9 +122,10 @@ class MinioService {
           anomalyData += chunk;
         }
         const anomaly = JSON.parse(anomalyData);
+        anomaly.fileName = obj.name;
         objects.push(anomaly);
       }
-      return objects;
+      return objects.reverse();
     } catch (error) {
       console.error('Error retrieving all anomalies:', error);
       throw error;
@@ -148,11 +149,12 @@ class MinioService {
           }
           const anomaly = JSON.parse(anomalyData);
           if (anomaly.typeof === 'AREA') {
+            anomaly.fileName = obj.name;
             objects.push(anomaly);
           }
         }
       }
-      return objects || [];
+      return objects.reverse() || [];
     } catch (error) {
       console.error('Error retrieving district anomalies:', error);
       throw error;
@@ -176,11 +178,12 @@ class MinioService {
           }
           const anomaly = JSON.parse(anomalyData);
           if (anomaly.typeof === 'DEVICE') {
+            anomaly.fileName = obj.name;
             objects.push(anomaly);
           }
         }
       }
-      return objects || [];
+      return objects.reverse() || [];
     } catch (error) {
       console.error('Error retrieving device anomalies:', error);
       throw error;

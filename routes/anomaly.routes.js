@@ -14,7 +14,7 @@ router.get('/', async (req, res, next) => {
     const limit = parseInt(req.query.limit) || 100;
     const startAfter = req.query.startAfter || null;
     const anomalies = await minioService.getAllAnomalies(limit, startAfter);
-    res.json({ success: true, count: anomalies.length, limit, startAfter, data: anomalies });
+    res.json({ success: true, lastFileName: anomalies[anomalies.length - 1]?.fileName,  count: anomalies.length, limit, startAfter, data: anomalies });
   } catch (error) {
     next(error);
   }
@@ -25,7 +25,7 @@ router.get('/districts', async (req, res, next) => {
     const limit = parseInt(req.query.limit) || 100;
     const startAfter = req.query.startAfter || null;
     const districtAnomalies = await minioService.getAllDistrictAnomalies(limit, startAfter);
-    res.json({ success: true, count: districtAnomalies.length, limit, startAfter, data: districtAnomalies });
+    res.json({ success: true, lastFileName: districtAnomalies[districtAnomalies.length - 1]?.fileName, count: districtAnomalies.length, limit, startAfter, data: districtAnomalies });
   } catch (error) {
     next(error);
   }
@@ -36,7 +36,7 @@ router.get('/devices', async (req, res, next) => {
     const limit = parseInt(req.query.limit) || 100;
     const startAfter = req.query.startAfter || null;
     const deviceAnomalies = await minioService.getAllDeviceAnomalies(limit, startAfter);
-    res.json({ success: true, count: deviceAnomalies.length, limit, startAfter, data: deviceAnomalies });
+    res.json({ success: true, lastFileName: deviceAnomalies[deviceAnomalies.length - 1]?.fileName, count: deviceAnomalies.length, limit, startAfter, data: deviceAnomalies });
   } catch (error) {
     next(error);
   }
