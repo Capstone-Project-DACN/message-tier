@@ -1,34 +1,33 @@
+const config = require('../../configs');
 const AreaMeterService = require('../metrics/area-meter.service');
 const HouseholdMeterService = require('../metrics/household-meter.service');
 const KafkaConsumerService = require('../kafka/consumer.service');
 const AlertService = require('./alert.service');
-const config = require('../../configs');
 const MinioService = require('../../services/minio/minio.service');
-const AreaProducerService = require('./area-producer.service');
-const { startCronJob } = require('../../utils/cronJob');
+const ProducerService = require('../kafka/producer.service');
+const redisClient = require('../redis/redis.service');
 
 class AnomalyDetectorService {
   constructor() {
     this.areas = {};
+    this.settings = {} 
+    this.producer = new ProducerService();
     this.alertService = new AlertService();
     this.minioService = new MinioService();
-    this.areaProducer = new AreaProducerService();
-    this.anomalyThreshold = process.env.ANOMALY_THRESHOLD || 5; 
   }
 
   async start() {
-    console.log("Anomaly Detector Service started");
+    this.settings = await redisClient.getAnomalySettings();
+    console.log("[INFOMATION][SETTING]: ", this.settings);
 
+    await this.producer.init();
     await this.alertService.init();
     await this.minioService.init();
-    await this.areaProducer.init();
-
+    
     await Promise.all(config.topics.map(async (topicConfig) => {
       const areaId = `${topicConfig.area.replace('area-', '')}`;
       await this.initializeArea(areaId, topicConfig);
     }));
-
-    // startCronJob();
   }
 
   async initializeArea(areaId, topicConfig) {
@@ -61,15 +60,15 @@ class AnomalyDetectorService {
 
         if (isAreaMeter) {
           this.areas[areaId].areaMeter.addReading(reading);
-          this.areaProducer.sendAreaMessage(reading.device_id, data);
+          this.producer.sendAreaMessage(reading.device_id, data);
         } else {
           this.areas[areaId].householdMeter.addReading(reading, (anomaly) => {
             this.handleDeviceAnomaly(areaId, anomaly);
           });
-          this.areaProducer.sendHouseholdMessage(reading.device_id, data);
+          this.producer.sendHouseholdMessage(reading.device_id, data);
         }
       } catch (error) {
-        console.error(`Error processing message in area ${areaId}:`, error);
+        console.error(`[ERROR][ANOMALY][AREA] Error processing message in area ${areaId}:`, error);
       }
     });
   }
@@ -90,7 +89,7 @@ class AnomalyDetectorService {
     const householdWindowSum = area.householdMeter.getSumWindow();
 
     if (areaMeterWindowSum === 0 && householdWindowSum === 0) {
-      console.log(`No data in window for area ${areaId}`);
+      console.log(`[INFORMATION][WINDOW] NOTHING TO ANALYZE ${areaId}`);
       return;
     }
 
@@ -107,15 +106,14 @@ class AnomalyDetectorService {
       `Percentage Difference: ${percentageDifference.toFixed(2)}%`
     );
 
-    if (percentageDifference > this.anomalyThreshold) {
-      console.warn(`⚠️ ANOMALY DETECTED in area ${areaId}: ${percentageDifference.toFixed(2)}% difference`);
+    if (percentageDifference > this.settings.area_threshold) {
       const anomaly = {
         timestamp: Date.now(),
         areaMeterTotal: areaMeterWindowSum,
         householdMeterTotal: householdWindowSum,
         difference,
         percentageDifference,
-        windowSize: config.window.windowTime,
+        windowSize: config.window.WINDOW_TIME,
       };
       this.alertService.sendAlert(areaId, anomaly);
       this.minioService.storeAreaAnomaly(areaId, anomaly);
@@ -123,7 +121,6 @@ class AnomalyDetectorService {
   }
 
   handleDeviceAnomaly(areaId, anomaly) {
-    console.log(`Storing device anomaly for area ${areaId}, device ${anomaly.deviceId}`);
     this.alertService.sendAlert(areaId, anomaly);
     this.minioService.storeDeviceAnomaly(anomaly.deviceId, areaId, anomaly);
   }
@@ -136,7 +133,6 @@ class AnomalyDetectorService {
       await area.consumer.disconnect();
     }
     await this.alertService.stop();
-    console.log('Anomaly Detector Service stopped');
   }
 }
 

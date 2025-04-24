@@ -11,10 +11,10 @@ class HouseholdMeterService {
     this.consumptionHistory = {}; // { device_id: [consumption_delta] }
     this.lastValueOfPreviousWindow = {}; // { device_id: value }
     this.householdWindowSum = 0;
-    this.windowSize = config.window.windowTime;
-    this.anomalyThreshold = +process.env.DEVICE_ANOMALY_THRESHOLD || 50; // Ngưỡng anomaly cho device (%)
+    this.windowSize = config.anomaly.window_time;
+    this.anomalyThreshold = config.anomaly.device_threshold; // Ngưỡng anomaly cho device (%)
+    this.mininumDeltaConsumption = config.anomaly.min_delta_consumption;
     this.maxHistorySize = 100; // Giới hạn số lượng giá trị tiêu thụ trong lịch sử
-    this.mininumDeltaConsumption = +process.env.MINIMUM_DELTA_CONSUMPTION || 50;
   }
 
   addReading(reading, onDeviceAnomaly = () => {}) {

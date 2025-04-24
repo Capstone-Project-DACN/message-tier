@@ -8,7 +8,7 @@ class AreaMeterService {
     this.subject = new Subject();
     this.readings = [];
     this.areaWindowSum = 0;
-    this.windowSize = config.window.windowTime;
+    this.windowSize = config.anomaly.window_time;
     this.lastValueOfPreviousWindow = 0;
   }
 

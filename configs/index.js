@@ -1,10 +1,11 @@
-const { KAFKA_CONFIG, HOUSEHOLD_TOPICS } = require('./kafka.config');
-const MINIO = require('./minio');
-const WINDOW_CONFIG = require('./window.config');
+const KAFKA_CONFIG = require('./kafka.config');
+const MINIO_CONFIG = require('./minio.config');
+const ANOMALY_CONFIG = require('./anomaly.config');
 
 module.exports = {
-  kafka: KAFKA_CONFIG,
-  topics: Object.values(HOUSEHOLD_TOPICS),
-  window: WINDOW_CONFIG,
-  minio: MINIO
+  kafka: KAFKA_CONFIG.kafka,
+  minio: MINIO_CONFIG.minio,
+  redis: ANOMALY_CONFIG.redis,
+  topics: Object.values(KAFKA_CONFIG.topics),
+  anomaly: ANOMALY_CONFIG.anomaly,
 };

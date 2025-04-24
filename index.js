@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const AnomalyDetectorService = require('./services/anomaly/detector.service');
 const anomalyRoutes = require('./routes/anomaly.routes');
+const settingRoutes = require('./routes/setting.routes');
 const errorMiddleware = require('./middleware/error.middleware');
 
 const app = express();
@@ -16,6 +17,7 @@ const corsOptions = {
 app.use(cors(corsOptions));  
 app.use(express.json());
 app.use('/api/anomalies', anomalyRoutes);
+app.use('/api/settings', settingRoutes);
 app.use(errorMiddleware);
 
 async function main() {
@@ -36,10 +38,10 @@ async function main() {
   try {
     await anomalyDetector.start();
     app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
+      console.log(`ANOMALY DETECTOR SERVICE IS RUNNING ON ${PORT}`);
     });
   } catch (error) {
-    console.error('Failed to start anomaly detector:', error);
+    console.error('ANOMALY DETECTOR SERVICE FAILED TO START:', error);
     process.exit(1);
   }
 }

@@ -6,13 +6,13 @@ class AlertService {
   }
 
   async init() {
-    await this.producer.connect();
+    console.log("[SUCCESS][ALERT] ALERT SERVICE INITIALIZED");
   }
 
   async sendAlert(areaId, anomalyData) {
     try {
-      await this.producer.send(
-        'anomaly-alerts', 
+      await this.producer.sendMessage(
+        (process.env.ALERT_TOPIC || "anomaly_alerts"),
         areaId,
         {
           areaId,
@@ -22,9 +22,9 @@ class AlertService {
           ...anomalyData
         }
       );
-      console.log(`Alert sent for area ${areaId}`);
+      console.log(`[SUCCESS][ALERT] Alert sent for area ${areaId}`);
     } catch (error) {
-      console.error("Error sending alert:", error);
+      console.error("[ERROR][ALERT] Error sending alert:", error);
     }
   }
 

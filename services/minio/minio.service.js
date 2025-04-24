@@ -3,17 +3,11 @@ const config = require('../../configs');
 
 class MinioService {
   constructor() {
-    this.client = new Minio.Client({
-      endPoint: process.env.MINIO_ENDPOINT || 'localhost',
-      port: parseInt(process.env.MINIO_PORT || '9000'),
-      useSSL: process.env.MINIO_USE_SSL === 'true',
-      accessKey: process.env.MINIO_ACCESS_KEY || 'myminioadmin',
-      secretKey: process.env.MINIO_SECRET_KEY || 'myminioadmin'
-    });
-    if (!config?.minio?.minio?.bucket) {
-      throw new Error('MinIO bucket configuration is missing in config file');
+    this.client = new Minio.Client(config.minio);
+    if (!config?.minio?.bucket) {
+      throw new Error('[ERROR][MINIO] MinIO bucket configuration is missing in config file');
     }
-    this.bucket = config.minio.minio.bucket;
+    this.bucket = config.minio.bucket;
   }
 
   async init(maxRetries = 3) {
@@ -22,13 +16,12 @@ class MinioService {
         const exists = await this.client.bucketExists(this.bucket);
         if (!exists) {
           await this.client.makeBucket(this.bucket, 'us-east-1');
-          console.log(`Bucket ${this.bucket} created successfully`);
+          console.log(`[SUCCESS][MINIO] BUCKET ${this.bucket} CREATED`);
         }
         return;
       } catch (error) {
-        console.error(`Attempt ${attempt} - Error initializing MinIO:`, error);
         if (attempt === maxRetries) {
-          throw new Error(`Failed to initialize MinIO after ${maxRetries} attempts: ${error.message}`);
+          throw new Error(`[ERROR][MINIO] Failed to initialize MinIO after ${maxRetries} attempts: ${error.message}`);
         }
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
@@ -38,7 +31,7 @@ class MinioService {
   async storeAreaAnomaly(areaId, anomaly, maxRetries = 3) {
     try {
       if (!anomaly?.timestamp || isNaN(new Date(anomaly.timestamp).getTime())) {
-        throw new Error('Invalid timestamp in anomaly data');
+        throw new Error('[ERROR][MINIO] Invalid timestamp in anomaly data');
       }
       const date = new Date(anomaly.timestamp).toISOString().split('T')[0];
       const objectName = `anomalies/${areaId}/district-level/${date}/anomaly_${anomaly.timestamp}.json`;
@@ -58,7 +51,7 @@ class MinioService {
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           await this.client.putObject(this.bucket, objectName, Buffer.from(data));
-          console.log(`[DISTRICT][WARMING] stored in MinIO: ${objectName}`);
+          console.log(`[SUCCESS][MINIO][DISTRICT] District anomaly stored in MinIO: ${objectName}`);
           return objectName;
         } catch (error) {
           if (attempt === maxRetries) throw error;
@@ -66,7 +59,7 @@ class MinioService {
         }
       }
     } catch (error) {
-      console.error(`Error storing anomaly for area ${areaId}:`, error);
+      console.error(`[ERROR][MINIO] Error storing anomaly for area ${areaId}`);
       throw error;
     }
   }
@@ -94,7 +87,7 @@ class MinioService {
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           await this.client.putObject(this.bucket, objectName, Buffer.from(data));
-          console.log(`[DEVICE][WARMING] stored in MinIO: ${objectName}`);
+          console.log(`[SUCCESS][MINIO][DISTRICT] Device anomaly stored in MinIO: ${objectName}`);
           return objectName;
         } catch (error) {
           if (attempt === maxRetries) throw error;
@@ -102,7 +95,7 @@ class MinioService {
         }
       }
     } catch (error) {
-      console.error(`Error storing anomaly for area ${areaId}:`, error);
+      console.error(`[ERROR][MINIO] Error storing anomaly for area ${areaId}:`, error);
       throw error;
     }
   }
@@ -127,7 +120,7 @@ class MinioService {
       }
       return objects.reverse();
     } catch (error) {
-      console.error('Error retrieving all anomalies:', error);
+      console.error('[ERROR][MINIO] Error retrieving all anomalies:', error);
       throw error;
     }
   }
@@ -156,7 +149,7 @@ class MinioService {
       }
       return objects.reverse() || [];
     } catch (error) {
-      console.error('Error retrieving district anomalies:', error);
+      console.error('[ERROR][MINIO] Error retrieving district anomalies:', error);
       throw error;
     }
   }
@@ -185,7 +178,7 @@ class MinioService {
       }
       return objects.reverse() || [];
     } catch (error) {
-      console.error('Error retrieving device anomalies:', error);
+      console.error('[ERROR][MINIO] Error retrieving device anomalies:', error);
       throw error;
     }
   }
