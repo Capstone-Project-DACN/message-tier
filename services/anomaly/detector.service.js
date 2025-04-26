@@ -113,7 +113,7 @@ class AnomalyDetectorService {
         householdMeterTotal: householdWindowSum,
         difference,
         percentageDifference,
-        windowSize: config.window.WINDOW_TIME,
+        windowSize: config.anomaly.window_time,
       };
       this.alertService.sendAlert(areaId, anomaly);
       this.minioService.storeAreaAnomaly(areaId, anomaly);

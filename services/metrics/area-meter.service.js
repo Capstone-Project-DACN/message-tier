@@ -4,7 +4,7 @@ const config = require('../../configs');
 
 class AreaMeterService {
   constructor(areaId) {
-    this.areaId = areaId;
+    this.areaId = areaId; 
     this.subject = new Subject();
     this.readings = [];
     this.areaWindowSum = 0;

@@ -6,6 +6,7 @@ class AlertService {
   }
 
   async init() {
+    await this.producer.init();
     console.log("[SUCCESS][ALERT] ALERT SERVICE INITIALIZED");
   }
 

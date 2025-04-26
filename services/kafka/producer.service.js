@@ -57,7 +57,7 @@ class ProducerService {
           },
         ],
       });
-      console.log(`[SUCCESS][KAFKA_PRODUCER] Message sent to topic ${topic}`);
+      // console.log(`F[KAFKA_PRODUCER] Message sent to topic ${topic}`);
     } catch (error) {
       console.error(`[ERROR][KAFKA_PRODUCER] Failed to send message to topic ${topic}:`, error);
       throw error;
