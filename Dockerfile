@@ -13,11 +13,11 @@ RUN npm install
 # Copy the rest of the application code to the working directory
 COPY . .
 
-# Expose the port the app runs on
-EXPOSE 4000
+# Copy the .env file only if it exists
+RUN if [ -f .env ]; then cp .env .; fi
 
-# Copy the .env file
-COPY .env .
+# Expose the port the app runs on
+EXPOSE 3000
 
 # Define the command to run the application
 CMD [ "npm", "run", "start" ]
