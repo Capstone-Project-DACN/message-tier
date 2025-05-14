@@ -3,13 +3,21 @@ const { windowTime, mergeMap, reduce, filter } = require('rxjs/operators');
 const config = require('../../configs');
 
 class AreaMeterService {
-  constructor(areaId) {
+  constructor(areaId, settings) {
     this.areaId = areaId; 
     this.subject = new Subject();
     this.readings = [];
     this.areaWindowSum = 0;
-    this.windowSize = config.anomaly.window_time;
     this.lastValueOfPreviousWindow = 0;
+    this.windowSize = settings.window_time;
+    // this.windowSize = config.anomaly.window_time;
+  }
+
+  updateAreaSettings(settings) { 
+    if (typeof settings.window_time === "number" && settings.window_time > 0) 
+      this.windowSize = settings.window_time;
+
+    console.log("[INFOMATION][SETTING][AREA]: ", this.areaId, this.windowSize);
   }
 
   addReading(reading) {

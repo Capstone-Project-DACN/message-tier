@@ -26,14 +26,14 @@ class AnomalyDetectorService {
     
     await Promise.all(config.topics.map(async (topicConfig) => {
       const areaId = `${topicConfig.area.replace('area-', '')}`;
-      await this.initializeArea(areaId, topicConfig);
+      await this.initializeArea(areaId, topicConfig, this.settings);
     }));
   }
 
-  async initializeArea(areaId, topicConfig) {
+  async initializeArea(areaId, topicConfig, settings) {
     this.areas[areaId] = {
-      areaMeter: new AreaMeterService(areaId),
-      householdMeter: new HouseholdMeterService(areaId),
+      areaMeter: new AreaMeterService(areaId, settings),
+      householdMeter: new HouseholdMeterService(areaId, settings),
       consumer: new KafkaConsumerService(
         `${config.kafka.groupId.main}-${areaId}`,
         [topicConfig.area, topicConfig.household]
@@ -113,7 +113,8 @@ class AnomalyDetectorService {
         householdMeterTotal: householdWindowSum,
         difference,
         percentageDifference,
-        windowSize: config.anomaly.window_time,
+        windowSize: this.settings.window_time 
+        // windowSize: config.anomaly.window_time,
       };
       this.alertService.sendAlert(areaId, anomaly);
       this.minioService.storeAreaAnomaly(areaId, anomaly);
@@ -123,6 +124,14 @@ class AnomalyDetectorService {
   handleDeviceAnomaly(areaId, anomaly) {
     this.alertService.sendAlert(areaId, anomaly);
     this.minioService.storeDeviceAnomaly(anomaly.deviceId, areaId, anomaly);
+  }
+
+  async reloadSettings() {
+    this.settings = await redisClient.getAnomalySettings();
+    for (const areaId in this.areas) {
+      this.areas[areaId].householdMeter.updateHouseholdSetting(this.settings);
+      this.areas[areaId].areaMeter.updateAreaSettings(this.settings);
+    }
   }
 
   async stop() {
@@ -136,4 +145,4 @@ class AnomalyDetectorService {
   }
 }
 
-module.exports = AnomalyDetectorService;
+module.exports = new AnomalyDetectorService();

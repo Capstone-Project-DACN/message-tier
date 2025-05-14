@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const redisClient = require('../services/redis/redis.service'); 
+const AnomalyDetectorService = require('../services/anomaly/detector.service');
 
 function validateSettingsInput(body) {
     const errors = [];
@@ -61,6 +62,7 @@ router.put('/update', async (req, res) => {
         }
 
         const updatedSettings = await redisClient.updateAnomalySettings(settings);
+        await AnomalyDetectorService.reloadSettings();
         res.json({ success: true, message: 'Settings updated successfully', settings: updatedSettings });
     } catch (error) {
         res.status(500).json({ error: 'Failed to update settings' });

@@ -21,7 +21,7 @@ app.use('/api/settings', settingRoutes);
 app.use(errorMiddleware);
 
 async function main() {
-  const anomalyDetector = new AnomalyDetectorService();
+  const anomalyDetector = AnomalyDetectorService;
 
   process.on('SIGINT', async () => {
     console.log('Received SIGINT. Shutting down...');

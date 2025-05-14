@@ -3,7 +3,7 @@ const { windowTime, mergeMap, reduce, filter } = require('rxjs/operators');
 const config = require('../../configs');
 
 class HouseholdMeterService {
-  constructor(areaId) {
+  constructor(areaId, settings) {
     this.areaId = areaId;
     this.subject = new Subject();
     this.readings = {}; // { device_id: [reading] }
@@ -11,10 +11,26 @@ class HouseholdMeterService {
     this.consumptionHistory = {}; // { device_id: [consumption_delta] }
     this.lastValueOfPreviousWindow = {}; // { device_id: value }
     this.householdWindowSum = 0;
-    this.windowSize = config.anomaly.window_time;
-    this.anomalyThreshold = config.anomaly.device_threshold; // Ngưỡng anomaly cho device (%)
-    this.mininumDeltaConsumption = config.anomaly.min_delta_consumption;
     this.maxHistorySize = 100; // Giới hạn số lượng giá trị tiêu thụ trong lịch sử
+    this.windowSize = settings.window_time; 
+    this.anomalyThreshold = settings.device_threshold;  
+    this.mininumDeltaConsumption = settings.min_delta_consumption; 
+    // this.windowSize = config.anomaly.window_time;
+    // this.anomalyThreshold = config.anomaly.device_threshold; // Ngưỡng anomaly cho device (%)
+    // this.mininumDeltaConsumption = config.anomaly.min_delta_consumption; 
+  }
+
+  updateHouseholdSetting(settings) { 
+    if (typeof settings.window_time === "number" && settings.window_time > 0) 
+      this.windowSize = settings.window_time;
+    
+    if (typeof settings.device_threshold === "number" &&settings.device_threshold > 0)  
+      this.anomalyThreshold = settings.device_threshold;
+
+    if (typeof settings.min_delta_consumption === "number" && settings.min_delta_consumption >= 0)  
+      this.mininumDeltaConsumption = settings.min_delta_consumption;
+
+    console.log("[INFOMATION][SETTING][HOUSEHOLD]: ", this.areaId, this.windowSize, this.anomalyThreshold, this.mininumDeltaConsumption);
   }
 
   addReading(reading, onDeviceAnomaly = () => {}) {
